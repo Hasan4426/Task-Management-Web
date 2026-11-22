@@ -1,0 +1,13 @@
+{
+  "name": "web-development-server",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Backend workspace; application features have not been integrated.",
+  "engines": {
+    "node": ">=26"
+  },
+  "scripts": {
+    "test": "node --test"
+  }
+}

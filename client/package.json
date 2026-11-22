@@ -1,0 +1,10 @@
+{
+  "name": "web-development-client",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Frontend workspace; React application implementation is pending.",
+  "engines": {
+    "node": ">=26"
+  }
+}
