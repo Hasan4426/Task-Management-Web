@@ -2,6 +2,33 @@
 
 Node.js 26 LTS + Express + MongoDB. Implements registration, login, logout and session restoration. The frontend is a separate task for Hasan.
 
+## Source layout
+
+```text
+src/
+  features/
+    auth/
+      auth.routes.js  Registration, login, logout and current-user routes
+      auth.user.js    Public user serialization and database projection
+      password.js     Salted password hashing and verification
+    boards/           Future board feature (placeholder)
+    cards/            Future card/list feature (placeholder)
+  middleware/
+    auth.js           Current-user authentication middleware
+  app.js              Express/session assembly and feature mounting hook
+  config.js           Environment validation and shared session settings
+  database.js         Shared MongoDB client and indexes
+  errors.js           Shared API errors and redacted logging
+  index.js            HTTP startup and graceful shutdown
+test/
+  auth.test.js        Authentication integration tests
+scripts/
+  setup-env.js        Private local environment generation
+```
+
+Feature modules share the database connection and application. Add new feature
+routers through the mounting hook below; avoid separate servers or user models per feature.
+
 ## Start locally
 
 From this repository's root:
@@ -104,7 +131,7 @@ const app = createApp({
 });
 ```
 
-`app.locals.requireAuth` includes session loading and current-user verification. The lower-level `requireAuth` export from `auth.js` assumes a session has already been loaded; use the composed helper for feature routes. `database` comes from `connectDatabase(config)` and `config` from `loadConfig(env)`.
+`app.locals.requireAuth` includes session loading and current-user verification. The lower-level `requireAuth` export from `src/middleware/auth.js` assumes a session has already been loaded; use the composed helper for feature routes. `database` comes from `connectDatabase(config)` and `config` from `loadConfig(env)`.
 
 For JSON mutations, add an appropriately bounded `express.json()` parser to the feature router. Global `/api` middleware already enforces the allowed Origin, required mutation header, production HTTPS checks, CORS and no-store caching. Authenticate and enforce the feature's ownership/membership rules before accessing private resources. Never trust an arbitrary user ID in a request body.
 

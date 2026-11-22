@@ -1,6 +1,6 @@
 import { randomBytes, scrypt, timingSafeEqual } from 'node:crypto'
 import { promisify } from 'node:util'
-import { ApiError } from './errors.js'
+import { ApiError } from '../../errors.js'
 
 const derive = promisify(scrypt)
 const options = { N: 131072, r: 8, p: 1, maxmem: 160 * 1024 * 1024 }

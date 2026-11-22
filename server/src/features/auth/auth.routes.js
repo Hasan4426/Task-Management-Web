@@ -1,22 +1,14 @@
 import { Router, json } from 'express'
 import { rateLimit } from 'express-rate-limit'
 import { MongoServerError, ObjectId } from 'mongodb'
-import { SESSION_COOKIE_NAME, SESSION_TTL_MS } from './config.js'
-import { ApiError, logFailure, sendError } from './errors.js'
+import { SESSION_COOKIE_NAME, SESSION_TTL_MS } from '../../config.js'
+import { ApiError, logFailure, sendError } from '../../errors.js'
+import { requireAuth } from '../../middleware/auth.js'
+import { publicUser } from './auth.user.js'
 import { hashPassword, verifyPassword } from './password.js'
 
 const readJson = json({ limit: '8kb', inflate: false })
-const publicProjection = { _id: 1, name: 1, email: 1, createdAt: 1 }
 const emailPattern = /^[a-z0-9!#$%&'*+/=?^_`{|}~-]+(?:\.[a-z0-9!#$%&'*+/=?^_`{|}~-]+)*@(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/
-
-function publicUser(user) {
-  return {
-    id: user._id.toHexString(),
-    name: user.name,
-    email: user.email,
-    createdAt: user.createdAt.toISOString(),
-  }
-}
 
 function requireJson(req, res, next) {
   if (!req.is('application/json')) {
@@ -70,23 +62,6 @@ async function startSession(req, userId) {
     await sessionOperation(req, 'destroy').catch(() => {})
     throw error
   }
-}
-
-export async function requireAuth(req, res, next) {
-  const { userId, expiresAt } = req.session ?? {}
-  if (typeof userId !== 'string' || !/^[a-f0-9]{24}$/.test(userId)
-      || !Number.isSafeInteger(expiresAt) || expiresAt <= Date.now()) {
-    throw new ApiError(401, 'UNAUTHENTICATED', 'Sign in to continue.')
-  }
-  const user = await req.app.locals.database.users.findOne(
-    { _id: new ObjectId(userId) },
-    { projection: publicProjection },
-  )
-  if (!user) {
-    throw new ApiError(401, 'UNAUTHENTICATED', 'Sign in to continue.')
-  }
-  req.user = publicUser(user)
-  next()
 }
 
 function authRateLimit(limit, identifier) {

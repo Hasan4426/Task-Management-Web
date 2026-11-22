@@ -5,8 +5,31 @@ Team task management project for Web Development Fall 26.
 ## Project structure
 
 ```text
-client/   React frontend (planned)
-server/   Node.js and Express backend
+.github/workflows/   Automated backend tests
+client/
+  src/
+    features/       auth, boards and cards frontend modules (placeholders)
+    components/     Shared UI components (placeholder)
+    api/            Shared HTTP client (placeholder)
+  package.json
+  package-lock.json
+server/
+  src/
+    features/
+      auth/         Working authentication routes and password/user helpers
+      boards/       Future board feature (placeholder)
+      cards/        Future card/list feature (placeholder)
+    middleware/     Shared authentication middleware
+    config.js
+    database.js
+    errors.js
+    app.js
+    index.js
+  test/             MongoDB integration tests
+  scripts/          Local environment setup
+  .env.example
+  package.json
+  package-lock.json
 ```
 
 The frontend and backend share this repository and can be deployed independently.
@@ -36,9 +59,21 @@ The authentication backend is implemented in `server/`. See its
 [setup, API and run instructions](server/README.md).
 
 The React frontend and the other feature areas have not been implemented here.
+Their folders are preserved using `.gitkeep` files. The frontend package is an
+empty workspace pending React initialization; it has no dev/build commands yet.
+
+## Automated checks
+
+`.github/workflows/backend-ci.yml` runs Node.js 26 backend tests against an isolated
+MongoDB 9.0.8 service on relevant feature/fix branch pushes and pull requests targeting
+`develop` or `main`. It uses the same `npm ci` and `npm test` commands as local development.
+No deployment occurs in this workflow.
 
 ## Team workflow
 
 Use short feature branches and pull requests. Decide task assignments within the team.
+Create `feature/...` or `fix/...` branches from `develop`, open reviewed pull requests
+back into `develop`, and promote tested milestones to `main`. Branches represent work,
+not permanent per-person copies of the project.
 Keep secrets and local environment files out of Git. Document actual completed contributions
 for the course submission.
