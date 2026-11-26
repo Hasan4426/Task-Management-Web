@@ -15,10 +15,16 @@ export async function connectDatabase(config) {
 
     const boards = db.collection('boards')
     const boardMembers = db.collection('boardMembers')
+        const boardInvitations = db.collection('boardInvitations')
     await boardMembers.createIndex({ boardId: 1, userId: 1 }, { unique: true })
     await boardMembers.createIndex({ userId: 1, joinedAt: -1 })
+        await boardInvitations.createIndex(
+      { boardId: 1, email: 1 },
+      { unique: true, partialFilterExpression: { status: 'pending' } },
+    )
+    await boardInvitations.createIndex({ email: 1, status: 1, createdAt: -1 })
 
-    return { client, db, users, boards, boardMembers }
+       return { client, db, users, boards, boardMembers, boardInvitations }
   } catch (error) {
     await client.close().catch(() => {})
     throw error

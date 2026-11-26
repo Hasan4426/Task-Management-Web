@@ -1,3 +1,4 @@
+import { createBoardMembersRouter, createInvitationsRouter } from './features/boards/invitations.routes.js'
 import { createBoardsRouter } from './features/boards/boards.routes.js'
 
 export function registerRoutes(app) {
@@ -5,4 +6,6 @@ export function registerRoutes(app) {
   const deps = { database, requireAuth }
 
   app.use('/api/boards', createBoardsRouter(deps))
+    app.use('/api/boards/:boardId', createBoardMembersRouter(deps))
+  app.use('/api/invitations', createInvitationsRouter(deps))
 }

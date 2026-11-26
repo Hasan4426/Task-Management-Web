@@ -3,12 +3,18 @@ import Avatar from '../../components/Avatar.jsx'
 import { navigate } from '../../router.js'
 import { backgroundColor } from './backgrounds.js'
 import { deleteBoard, getBoard, updateBoard } from './boardsApi.js'
+import React, { useCallback, useEffect, useState } from 'react'
+import { useAuth } from '../auth/AuthContext.jsx'
+import { deleteBoard, getBoard, removeMember, updateBoard } from './boardsApi.js'
+import ShareDialog from './ShareDialog.jsx'
 
 export default function BoardPage({ boardId }) {
   const [state, setState] = useState({ status: 'loading', board: null, members: [], error: '' })
   const [menuOpen, setMenuOpen] = useState(false)
 
   useEffect(() => {
+      const { user } = useAuth()
+  const [sharing, setSharing] = useState(false)
     const controller = new AbortController()
     setState({ status: 'loading', board: null, members: [], error: '' })
     getBoard(boardId, controller.signal)
@@ -19,6 +25,7 @@ export default function BoardPage({ boardId }) {
       })
     return () => controller.abort()
   }, [boardId])
+    const closeShare = useCallback(() => setSharing(false), [])
 
   if (state.status === 'loading') return <main className="board-page board-page-empty"><p role="status">Loading board…</p></main>
   if (state.status !== 'ready') {
@@ -67,6 +74,15 @@ export default function BoardPage({ boardId }) {
     } catch (failure) { window.alert(failure.message) }
   }
 
+    async function handleLeave() {
+    setMenuOpen(false)
+    if (!window.confirm(`Leave "${board.title}"? You will lose access until you are invited again.`)) return
+    try {
+      await removeMember(board.id, user.id)
+      navigate('/')
+    } catch (failure) { window.alert(failure.message) }
+  }
+
   return <main className="board-page" style={{ background: backgroundColor(board.background) }}>
     <div className="board-header">
       <BoardTitle title={board.title} onSave={handleRename} />
@@ -76,6 +92,7 @@ export default function BoardPage({ boardId }) {
           {members.length > 5 && <li className="avatar avatar-sm more">+{members.length - 5}</li>}
         </ul>
         <div className="menu-wrapper">
+                  <button className="button header-button share-button" onClick={() => setSharing(true)}>Share</button>
           <button className="button header-button" aria-label="Board menu" aria-expanded={menuOpen} onClick={() => setMenuOpen(!menuOpen)}>⋯</button>
           {menuOpen && <div className="popover board-menu" role="menu">
             <p className="popover-title">Menu</p>
@@ -89,7 +106,7 @@ export default function BoardPage({ boardId }) {
             <hr />
             {isOwner
               ? <button className="menu-item danger" role="menuitem" onClick={handleDelete}>Delete board</button>
-              : <p className="muted">Only the board owner can delete this board.</p>}
+              : <button className="menu-item" role="menuitem" onClick={handleLeave}>Leave board</button>}
           </div>}
         </div>
       </div>
@@ -100,7 +117,14 @@ export default function BoardPage({ boardId }) {
         <p>Lists and cards will appear here.</p>
       </div>
     </div>
-
+    {sharing && <ShareDialog
+      board={board}
+      members={members}
+      currentUser={user}
+      onClose={closeShare}
+      onMembersChanged={(next) => setState((s) => ({ ...s, members: next }))}
+      onLeft={() => navigate('/')}
+    />}
   </main>
 }
 

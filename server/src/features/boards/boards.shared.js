@@ -2,6 +2,7 @@ import { ApiError } from '../../errors.js'
 import { publicProjection, publicUser } from '../auth/auth.user.js'
 
 export const BACKGROUNDS = ['blue', 'orange', 'green', 'red', 'purple', 'pink', 'lime', 'sky', 'grey']
+export const INVITATION_TTL_MS = 7 * 24 * 60 * 60 * 1000
 export const MAX_TITLE_LENGTH = 100
 
 export const BOARD_CHILD_COLLECTIONS = ['boardMembers', 'boardInvitations', 'lists', 'cards', 'labels', 'comments']
@@ -45,6 +46,17 @@ export function boardInput(body, { partial }) {
   return result
 }
 
+const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+
+export function invitationInput(body) {
+  requireObject(body, ['email'])
+  const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : ''
+  if (email.length > 254 || !emailPattern.test(email)) {
+    throw new ApiError(400, 'VALIDATION_ERROR', 'Check the submitted fields.', { email: 'Enter a valid email address.' })
+  }
+  return { email }
+}
+
 export function publicBoard(board, { role, memberCount } = {}) {
   return {
     id: board._id.toHexString(),
@@ -55,6 +67,18 @@ export function publicBoard(board, { role, memberCount } = {}) {
     updatedAt: board.updatedAt.toISOString(),
     ...(role === undefined ? {} : { role }),
     ...(memberCount === undefined ? {} : { memberCount }),
+  }
+}
+
+export function publicInvitation(invitation, extra = {}) {
+  return {
+    id: invitation._id.toHexString(),
+    boardId: invitation.boardId.toHexString(),
+    email: invitation.email,
+    status: invitation.status,
+    createdAt: invitation.createdAt.toISOString(),
+    expiresAt: invitation.expiresAt.toISOString(),
+    ...extra,
   }
 }
 
