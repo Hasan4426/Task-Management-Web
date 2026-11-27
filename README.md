@@ -5,72 +5,76 @@ Team task management project for Web Development Fall 26.
 ## Project structure
 
 ```text
-.github/workflows/   Automated backend checks
+.github/workflows/   Automated backend tests
 client/
   src/
-    features/
-      auth/         Frontend authentication placeholder
-      boards/       Frontend board placeholder
-      cards/        Frontend card/list placeholder
-    components/     Shared UI placeholder
-    api/            Shared HTTP client placeholder
+    features/       Working auth UI; boards and cards placeholders
+    components/     Shared UI components (placeholder)
+    api/            Shared credentialed HTTP client
   package.json
   package-lock.json
-  README.md
 server/
   src/
     features/
-      auth/         Backend authentication placeholder
-      boards/       Backend board placeholder
-      cards/        Backend card/list placeholder
-    middleware/     Shared request middleware placeholder
-  scripts/          Backend scripts placeholder
-  test/             Backend tests placeholder
+      auth/         Working authentication routes and password/user helpers
+      boards/       Future board feature (placeholder)
+      cards/        Future card/list feature (placeholder)
+    middleware/     Shared authentication middleware
+    config.js
+    database.js
+    errors.js
+    app.js
+    index.js
+  test/             MongoDB integration tests
+  scripts/          Local environment setup
   .env.example
   package.json
   package-lock.json
-  README.md
-.gitignore
-README.md
 ```
 
-This branch contains a shared project skeleton. Application code, dependencies and
-authentication tests have not been integrated. Empty directories are preserved by
-`.gitkeep` files; replace them when adding real files.
+The frontend and backend share this repository and can be deployed independently.
 
-## Setup and current capabilities
+## Development approach
 
-Use Node.js 26 LTS and npm. Both workspaces currently have no dependencies:
+Subteams own complete features. Agree on shared database models and API contracts,
+then build backend and frontend in parallel and connect each feature early.
+Ahmed owns the authentication backend; Hasan owns its frontend.
 
-```bash
-cd client
-npm ci
-cd ../server
-npm ci
-npm test
-```
+## Core scope
 
-The backend test command currently discovers **zero tests**. This validates the
-test runner setup; it does not verify a working application. Neither workspace
-has a start/dev/build command yet. No API or UI is running from this skeleton.
+- Accounts and profiles
+- Private boards and owner-managed membership
+- Lists and cards
+- Card movement and reordering
+- Assignments, due dates, and labels
+- Comments and search
+- Real-time board updates
+- AI summaries of card comment threads
 
-See [frontend setup](client/README.md) and [backend setup](server/README.md).
+Optional Jira extensions include issue types, backlog and sprints, and workflow rules.
 
-## Team workflow
+## Status
 
-Keep frontend and backend together in this repository. Group code by feature,
-and share one backend application, database connection setup and user model.
+The authentication backend is implemented in `server/`. See its
+[setup, API and run instructions](server/README.md).
 
-Create short `feature/...` or `fix/...` branches from `develop`. Merge completed,
-reviewed feature pull requests into `develop`, then promote verified milestones
-to `main`. Feature branches contain their implementation until it is integrated.
+The React authentication frontend is implemented without styling. It connects to
+the backend for registration, login, session restoration and logout. See
+[frontend setup and checks](client/README.md). Profile editing and the other
+feature areas remain unimplemented; boards and cards folders are placeholders.
 
 ## Automated checks
 
-Backend CI runs on relevant feature/fix branch pushes and pull requests targeting
-`develop` or `main`. It installs Node.js 26, starts an isolated MongoDB 9.0.8
-service, runs `npm ci` and executes the backend test command. Until tests are added,
-a successful run confirms only infrastructure/package/test-runner setup.
+`.github/workflows/backend-ci.yml` runs Node.js 26 backend tests against an isolated
+MongoDB 9.0.8 service on relevant feature/fix branch pushes and pull requests targeting
+`develop` or `main`. It uses the same `npm ci` and `npm test` commands as local development.
+No deployment occurs in this workflow.
 
-Commit source, tests, lockfiles and non-secret configuration templates. Keep
-`.env`, `node_modules`, IDE files and generated output outside Git.
+## Team workflow
+
+Use short feature branches and pull requests. Decide task assignments within the team.
+Create `feature/...` or `fix/...` branches from `develop`, open reviewed pull requests
+back into `develop`, and promote tested milestones to `main`. Branches represent work,
+not permanent per-person copies of the project.
+Keep secrets and local environment files out of Git. Document actual completed contributions
+for the course submission.
