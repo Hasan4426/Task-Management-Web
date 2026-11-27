@@ -4,10 +4,11 @@ import { MongoServerError, ObjectId } from 'mongodb'
 import { SESSION_COOKIE_NAME, SESSION_TTL_MS } from '../../config.js'
 import { ApiError, logFailure, sendError } from '../../errors.js'
 import { requireAuth } from '../../middleware/auth.js'
-import { publicUser } from './auth.user.js'
+import { publicProjection, publicUser } from './auth.user.js'
 import { hashPassword, verifyPassword } from './password.js'
 
 const readJson = json({ limit: '8kb', inflate: false })
+const invalidName = 'Enter a name of 1 to 80 characters.'
 const emailPattern = /^[a-z0-9!#$%&'*+/=?^_`{|}~-]+(?:\.[a-z0-9!#$%&'*+/=?^_`{|}~-]+)*@(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/
 
 function requireJson(req, res, next) {
@@ -17,22 +18,30 @@ function requireJson(req, res, next) {
   next()
 }
 
-function credentials(body, register) {
-  const allowed = register ? ['name', 'email', 'password'] : ['email', 'password']
+function requireAllowedFields(body, allowed) {
   if (!body || typeof body !== 'object' || Array.isArray(body)) {
     throw new ApiError(400, 'VALIDATION_ERROR', 'Send a JSON object.')
   }
   if (Object.keys(body).some((key) => !allowed.includes(key))) {
     throw new ApiError(400, 'VALIDATION_ERROR', 'The request contains unexpected fields.')
   }
-  const name = typeof body.name === 'string' ? body.name.trim() : ''
+}
+
+function validName(value) {
+  const name = typeof value === 'string' ? value.trim() : ''
+  return name && [...name].length <= 80 && name.isWellFormed() ? name : ''
+}
+
+function credentials(body, register) {
+  requireAllowedFields(body, register ? ['name', 'email', 'password'] : ['email', 'password'])
+  const name = validName(body.name)
   const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : ''
   const password = typeof body.password === 'string' ? body.password : ''
   const passwordLength = [...password].length
   const fields = {}
 
-  if (register && (!name || [...name].length > 80 || !name.isWellFormed())) {
-    fields.name = 'Enter a name of 1 to 80 characters.'
+  if (register && !name) {
+    fields.name = invalidName
   }
   if (email.length > 254 || email.indexOf('@') > 64 || !emailPattern.test(email)) {
     fields.email = 'Enter a valid email address.'
@@ -111,6 +120,25 @@ export function createAuthRouter({ database, config, loadSession, logger }) {
   })
 
   router.get('/me', loadSession, requireAuth, (req, res) => res.json({ user: req.user }))
+
+  router.patch('/me', loadSession, requireAuth, requireJson, readJson, async (req, res) => {
+    requireAllowedFields(req.body, ['name'])
+    const name = validName(req.body.name)
+    if (!name) {
+      throw new ApiError(400, 'VALIDATION_ERROR', 'Check the submitted fields.', { name: invalidName })
+    }
+
+    const user = await users.findOneAndUpdate(
+      { _id: new ObjectId(req.session.userId) },
+      { $set: { name } },
+      { projection: publicProjection, returnDocument: 'after' },
+    )
+    if (!user) {
+      throw new ApiError(401, 'UNAUTHENTICATED', 'Sign in to continue.')
+    }
+    res.json({ user: publicUser(user) })
+  })
+
   router.post('/logout', loadSession, async (req, res) => {
     if (req.session?.userId) await sessionOperation(req, 'destroy')
     res.clearCookie(SESSION_COOKIE_NAME, config.cookie)

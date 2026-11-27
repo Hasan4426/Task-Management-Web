@@ -59,6 +59,11 @@ function me(app, cookie) {
   return cookie ? call.set('Cookie', cookie) : call
 }
 
+function patchMe(app, cookie) {
+  const call = request(app).patch('/api/auth/me').set('X-Requested-With', 'XMLHttpRequest')
+  return cookie ? call.set('Cookie', cookie) : call
+}
+
 function sessionCookie(response) {
   const cookie = response.headers['set-cookie']?.find(value => value.startsWith('sid='))
   assert.ok(cookie, 'response should set sid')
@@ -127,6 +132,80 @@ test('register returns a public user and persists an HttpOnly session across app
   } finally {
     await reopened.client.close()
   }
+})
+
+test('profile update trims the name and only changes the signed-in account', async () => {
+  const app = newApp()
+  const details = account()
+  const registered = await post(app, 'register').send(details).expect(201)
+  const other = await post(app, 'register').send(account()).expect(201)
+  const cookie = sessionCookie(registered)
+  const name = 'Renée QA 🚀'
+
+  const updated = await patchMe(app, cookie).set('Origin', origin).send({ name: '  ' + name + '  ' }).expect(200)
+  const user = publicUser(updated, { ...details, name })
+  assert.deepEqual(user, { ...registered.body.user, name })
+  assert.equal(updated.headers['access-control-allow-origin'], origin)
+  assert.equal(updated.headers['set-cookie'], undefined)
+  assert.deepEqual((await me(app, sessionCookie(other)).expect(200)).body, other.body)
+})
+
+test('the saved profile name is stored in MongoDB and returned when the session is restored', async () => {
+  const app = newApp()
+  const details = account()
+  const registered = await post(app, 'register').send(details).expect(201)
+  const cookie = sessionCookie(registered)
+  const name = '😀'.repeat(80)
+  const storedBefore = await database.users.findOne({ email: details.email })
+  assert.ok(storedBefore)
+  await patchMe(app, cookie).send({ name }).expect(200)
+
+  const reopened = await connectDatabase(config)
+  try {
+    assert.deepEqual(await reopened.users.findOne({ email: details.email }), { ...storedBefore, name })
+    const freshApp = createApp({ config, database: reopened, logger })
+    const restored = await me(freshApp, cookie).expect(200)
+    assert.deepEqual(publicUser(restored, { ...details, name }), { ...registered.body.user, name })
+  } finally {
+    await reopened.client.close()
+  }
+})
+
+test('profile updates reject invalid names and read-only fields without changing the account', async () => {
+  const app = newApp()
+  const details = account()
+  const registered = await post(app, 'register').send(details).expect(201)
+  const cookie = sessionCookie(registered)
+
+  for (const payload of [{}, { name: '  ' }, { name: null }, { name: ['QA'] },
+    { name: '😀'.repeat(81) }, { name: '\ud800' }]) {
+    const response = await patchMe(app, cookie).send(payload)
+    publicError(response, 400, 'VALIDATION_ERROR')
+    assert.equal(typeof response.body.error.fields?.name, 'string')
+  }
+
+  for (const payload of [[], { name: 'New Name', email: 'changed@example.test' },
+    { name: 'New Name', id: registered.body.user.id }]) {
+    publicError(await patchMe(app, cookie).send(payload), 400, 'VALIDATION_ERROR')
+  }
+
+  publicError(await patchMe(app, cookie).type('text/plain').send('New Name'), 415, 'UNSUPPORTED_MEDIA_TYPE')
+  assert.deepEqual((await me(app, cookie).expect(200)).body, registered.body)
+})
+
+test('profile updates require a current session', async () => {
+  const app = newApp()
+  const details = account()
+  const registered = await post(app, 'register').send(details).expect(201)
+  const cookie = sessionCookie(registered)
+  await post(app, 'logout').set('Cookie', cookie).expect(204)
+
+  for (const session of [undefined, cookie]) {
+    const response = await patchMe(app, session).send({ name: 'Signed-out update' })
+    publicError(response, 401, 'UNAUTHENTICATED')
+    assert.equal(response.headers['set-cookie'], undefined)
+  }
+  assert.equal((await database.users.findOne({ email: details.email })).name, details.name)
 })
 
 test('login has a generic credential error and preserves exact password whitespace', async () => {
@@ -295,6 +374,14 @@ test('CORS allows the configured origin and auth mutations enforce origin and CS
     403, 'ORIGIN_NOT_ALLOWED')
   publicError(await request(app).post('/api/auth/logout').set('Origin', origin).set('Cookie', cookie),
     403, 'CSRF_REQUIRED')
+  const profilePreflight = await request(app).options('/api/auth/me')
+    .set('Origin', origin)
+    .set('Access-Control-Request-Method', 'PATCH')
+    .set('Access-Control-Request-Headers', 'content-type,x-requested-with')
+    .expect(204)
+  assert.match(profilePreflight.headers['access-control-allow-methods'], /\bPATCH\b/)
+  publicError(await request(app).patch('/api/auth/me').set('Origin', origin).set('Cookie', cookie)
+    .send({ name: 'New Name' }), 403, 'CSRF_REQUIRED')
   await me(app, cookie).expect(200)
 })
 
