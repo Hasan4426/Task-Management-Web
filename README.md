@@ -8,9 +8,9 @@ Team task management project for Web Development Fall 26.
 .github/workflows/   Automated backend tests
 client/
   src/
-    features/       auth, boards and cards frontend modules (placeholders)
+    features/       Working auth UI; boards and cards placeholders
     components/     Shared UI components (placeholder)
-    api/            Shared HTTP client (placeholder)
+    api/            Shared credentialed HTTP client
   package.json
   package-lock.json
 server/
@@ -58,9 +58,10 @@ Optional Jira extensions include issue types, backlog and sprints, and workflow 
 The authentication backend is implemented in `server/`. See its
 [setup, API and run instructions](server/README.md).
 
-The React frontend and the other feature areas have not been implemented here.
-Their folders are preserved using `.gitkeep` files. The frontend package is an
-empty workspace pending React initialization; it has no dev/build commands yet.
+The React authentication frontend is implemented without styling. It connects to
+the backend for registration, login, session restoration and logout. See
+[frontend setup and checks](client/README.md). Profile editing and the other
+feature areas remain unimplemented; boards and cards folders are placeholders.
 
 ## Automated checks
 
