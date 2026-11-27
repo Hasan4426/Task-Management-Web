@@ -17,7 +17,7 @@ function setup(initial = failure(401, 'UNAUTHENTICATED', 'Sign in to continue.')
   const fetch = vi.fn().mockResolvedValueOnce(initial)
   vi.stubGlobal('fetch', vi.fn((url, options) => {
     if (url.endsWith('/api/boards')) return Promise.resolve(response(200, { boards: [], page: 1, limit: 50, hasMore: false }))
-          if (url.endsWith('/api/invitations')) return Promise.resolve(response(200, { invitations: [] }))
+    if (url.endsWith('/api/invitations')) return Promise.resolve(response(200, { invitations: [] }))
     return fetch(url, options)
   }))
   render(<AuthProvider><App /></AuthProvider>)

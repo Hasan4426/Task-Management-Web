@@ -1,23 +1,21 @@
 import React, { useCallback, useEffect, useState } from 'react'
 import { navigate } from '../../router.js'
 import { backgroundColor } from './backgrounds.js'
-import { listBoards } from './boardsApi.js'
-import CreateBoardPopover from './CreateBoardPopover.jsx'
 import { listBoards, listMyInvitations } from './boardsApi.js'
+import CreateBoardPopover from './CreateBoardPopover.jsx'
 import InvitationsList from './InvitationsList.jsx'
 
 export default function Dashboard() {
   const [state, setState] = useState({ status: 'loading', boards: [], error: '' })
-    const [invitations, setInvitations] = useState([])
+  const [invitations, setInvitations] = useState([])
   const [creating, setCreating] = useState(false)
 
   const load = useCallback(async (signal) => {
     setState((previous) => ({ ...previous, status: 'loading', error: '' }))
     try {
-            const [{ boards }, { invitations: pending }] = await Promise.all([listBoards(signal), listMyInvitations(signal)])
+      const [{ boards }, { invitations: pending }] = await Promise.all([listBoards(signal), listMyInvitations(signal)])
       setState({ status: 'ready', boards, error: '' })
       setInvitations(pending)
-      setState({ status: 'ready', boards, error: '' })
     } catch (failure) {
       if (signal?.aborted) return
       setState((previous) => ({ ...previous, status: 'error', error: failure.message }))
@@ -33,7 +31,7 @@ export default function Dashboard() {
   const closeCreate = useCallback(() => setCreating(false), [])
 
   return <main className="dashboard">
-        <InvitationsList
+    <InvitationsList
       invitations={invitations}
       onAccepted={(invitation, board) => {
         setInvitations((list) => list.filter((i) => i.id !== invitation.id))

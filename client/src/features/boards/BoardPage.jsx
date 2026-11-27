@@ -1,20 +1,18 @@
-import React, { useEffect, useState } from 'react'
+import React, { useCallback, useEffect, useState } from 'react'
 import Avatar from '../../components/Avatar.jsx'
+import { useAuth } from '../auth/AuthContext.jsx'
 import { navigate } from '../../router.js'
 import { backgroundColor } from './backgrounds.js'
-import { deleteBoard, getBoard, updateBoard } from './boardsApi.js'
-import React, { useCallback, useEffect, useState } from 'react'
-import { useAuth } from '../auth/AuthContext.jsx'
 import { deleteBoard, getBoard, removeMember, updateBoard } from './boardsApi.js'
 import ShareDialog from './ShareDialog.jsx'
 
 export default function BoardPage({ boardId }) {
+  const { user } = useAuth()
   const [state, setState] = useState({ status: 'loading', board: null, members: [], error: '' })
+  const [sharing, setSharing] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
 
   useEffect(() => {
-      const { user } = useAuth()
-  const [sharing, setSharing] = useState(false)
     const controller = new AbortController()
     setState({ status: 'loading', board: null, members: [], error: '' })
     getBoard(boardId, controller.signal)
@@ -25,7 +23,8 @@ export default function BoardPage({ boardId }) {
       })
     return () => controller.abort()
   }, [boardId])
-    const closeShare = useCallback(() => setSharing(false), [])
+
+  const closeShare = useCallback(() => setSharing(false), [])
 
   if (state.status === 'loading') return <main className="board-page board-page-empty"><p role="status">Loading board…</p></main>
   if (state.status !== 'ready') {
@@ -74,7 +73,7 @@ export default function BoardPage({ boardId }) {
     } catch (failure) { window.alert(failure.message) }
   }
 
-    async function handleLeave() {
+  async function handleLeave() {
     setMenuOpen(false)
     if (!window.confirm(`Leave "${board.title}"? You will lose access until you are invited again.`)) return
     try {
@@ -91,8 +90,8 @@ export default function BoardPage({ boardId }) {
           {members.slice(0, 5).map((member) => <li key={member.id}><Avatar name={member.name} size="sm" /></li>)}
           {members.length > 5 && <li className="avatar avatar-sm more">+{members.length - 5}</li>}
         </ul>
+        <button className="button header-button share-button" onClick={() => setSharing(true)}>Share</button>
         <div className="menu-wrapper">
-                  <button className="button header-button share-button" onClick={() => setSharing(true)}>Share</button>
           <button className="button header-button" aria-label="Board menu" aria-expanded={menuOpen} onClick={() => setMenuOpen(!menuOpen)}>⋯</button>
           {menuOpen && <div className="popover board-menu" role="menu">
             <p className="popover-title">Menu</p>
@@ -117,6 +116,7 @@ export default function BoardPage({ boardId }) {
         <p>Lists and cards will appear here.</p>
       </div>
     </div>
+
     {sharing && <ShareDialog
       board={board}
       members={members}

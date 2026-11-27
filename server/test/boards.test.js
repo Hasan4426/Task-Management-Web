@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict'
 import { randomBytes } from 'node:crypto'
 import { after, before, test } from 'node:test'
-import { ObjectId } from 'mongodb'
 import request from 'supertest'
 import { createApp } from '../src/app.js'
 import { loadConfig } from '../src/config.js'
@@ -65,9 +64,8 @@ async function boardWithMember() {
   const owner = await newUser('Owner')
   const member = await newUser('Member')
   const { body: { board } } = await owner.post('/api/boards', { title: 'Team board' }).expect(201)
-  await database.boardMembers.insertOne({
-    boardId: new ObjectId(board.id), userId: new ObjectId(member.user.id), role: 'member', joinedAt: new Date(),
-  })
+  const { body: { invitation } } = await owner.post(`/api/boards/${board.id}/invitations`, { email: member.email }).expect(201)
+  await member.post(`/api/invitations/${invitation.id}/accept`).expect(200)
   return { owner, member, board }
 }
 
@@ -108,6 +106,8 @@ test('outsiders cannot see, edit or delete a board', async () => {
   errorCode(await outsider.get(`/api/boards/${board.id}`), 404, 'BOARD_NOT_FOUND')
   errorCode(await outsider.patch(`/api/boards/${board.id}`, { title: 'Hacked' }), 404, 'BOARD_NOT_FOUND')
   errorCode(await outsider.delete(`/api/boards/${board.id}`), 404, 'BOARD_NOT_FOUND')
+  errorCode(await outsider.get(`/api/boards/${board.id}/members`), 404, 'BOARD_NOT_FOUND')
+  errorCode(await outsider.post(`/api/boards/${board.id}/invitations`, { email: outsider.email }), 404, 'BOARD_NOT_FOUND')
   errorCode(await outsider.get('/api/boards/not-an-id'), 404, 'BOARD_NOT_FOUND')
   assert.deepEqual((await outsider.get('/api/boards').expect(200)).body.boards, [])
 })
@@ -123,32 +123,124 @@ test('paginates the board list', async () => {
   assert.equal(second.body.hasMore, false)
 })
 
-test('a member sees the shared board with its members', async () => {
-  const { member, board } = await boardWithMember()
+test('invite, accept, and the board appears for the new member', async () => {
+  const { owner, member, board } = await boardWithMember()
   const list = await member.get('/api/boards').expect(200)
   assert.deepEqual(list.body.boards.map((b) => [b.id, b.role, b.memberCount]), [[board.id, 'member', 2]])
-  const one = await member.get(`/api/boards/${board.id}`).expect(200)
-  assert.deepEqual(one.body.members.map((m) => m.role), ['owner', 'member'])
+
+  const members = await owner.get(`/api/boards/${board.id}/members`).expect(200)
+  assert.deepEqual(members.body.members.map((m) => m.role), ['owner', 'member'])
+  assert.deepEqual((await owner.get(`/api/boards/${board.id}/invitations`).expect(200)).body.invitations, [])
+  assert.deepEqual((await member.get('/api/invitations').expect(200)).body.invitations, [])
 })
 
-test('members can rename but only the owner can delete', async () => {
-  const { member, board } = await boardWithMember()
-  const renamed = await member.patch(`/api/boards/${board.id}`, { background: 'red' }).expect(200)
-  assert.equal(renamed.body.board.background, 'red')
+test('members can rename but only the owner deletes or manages members', async () => {
+  const { owner, member, board } = await boardWithMember()
+  const renamed = await member.patch(`/api/boards/${board.id}`, { title: 'Renamed' }).expect(200)
+  assert.equal(renamed.body.board.title, 'Renamed')
+
   errorCode(await member.delete(`/api/boards/${board.id}`), 403, 'OWNER_ONLY')
-  errorCode(await member.patch(`/api/boards/${board.id}`, {}), 400, 'VALIDATION_ERROR')
+  errorCode(await member.post(`/api/boards/${board.id}/invitations`, { email: 'x@example.test' }), 403, 'OWNER_ONLY')
+  errorCode(await member.get(`/api/boards/${board.id}/invitations`), 403, 'OWNER_ONLY')
+  errorCode(await member.delete(`/api/boards/${board.id}/members/${owner.user.id}`), 400, 'OWNER_CANNOT_LEAVE')
 })
 
-test('a member loses access as soon as the membership is gone', async () => {
-  const { member, board } = await boardWithMember()
-  await database.boardMembers.deleteOne({ boardId: new ObjectId(board.id), userId: new ObjectId(member.user.id) })
+test('an invitation can only be accepted by the invited email', async () => {
+  const owner = await newUser()
+  const invited = await newUser()
+  const stranger = await newUser()
+  const { body: { board } } = await owner.post('/api/boards', { title: 'B' }).expect(201)
+  const { body: { invitation } } = await owner.post(`/api/boards/${board.id}/invitations`, { email: invited.email.toUpperCase() }).expect(201)
+  assert.equal(invitation.email, invited.email)
+
+  assert.equal((await stranger.get('/api/invitations').expect(200)).body.invitations.length, 0)
+  errorCode(await stranger.post(`/api/invitations/${invitation.id}/accept`), 404, 'INVITATION_NOT_FOUND')
+
+  const mine = await invited.get('/api/invitations').expect(200)
+  assert.equal(mine.body.invitations[0].board.title, 'B')
+  assert.equal(mine.body.invitations[0].invitedBy.name, 'Test User')
+})
+
+test('duplicate invitations and inviting members are rejected', async () => {
+  const { owner, member, board } = await boardWithMember()
+  errorCode(await owner.post(`/api/boards/${board.id}/invitations`, { email: member.email }), 409, 'ALREADY_MEMBER')
+
+  const email = 'new.person@example.test'
+  const results = await Promise.all([
+    owner.post(`/api/boards/${board.id}/invitations`, { email }),
+    owner.post(`/api/boards/${board.id}/invitations`, { email }),
+  ])
+  assert.deepEqual(results.map((r) => r.status).sort(), [201, 409])
+  errorCode(await owner.post(`/api/boards/${board.id}/invitations`, { email: 'not-an-email' }), 400, 'VALIDATION_ERROR')
+})
+
+test('accepting the same invitation twice at once adds the member only once', async () => {
+  const owner = await newUser()
+  const invited = await newUser()
+  const { body: { board } } = await owner.post('/api/boards', { title: 'Race' }).expect(201)
+  const { body: { invitation } } = await owner.post(`/api/boards/${board.id}/invitations`, { email: invited.email }).expect(201)
+  const results = await Promise.all([
+    invited.post(`/api/invitations/${invitation.id}/accept`),
+    invited.post(`/api/invitations/${invitation.id}/accept`),
+  ])
+  assert.deepEqual(results.map((r) => r.status).sort(), [200, 404])
+  const members = await owner.get(`/api/boards/${board.id}/members`).expect(200)
+  assert.equal(members.body.members.length, 2)
+})
+
+test('declined and revoked invitations cannot be accepted', async () => {
+  const owner = await newUser()
+  const invited = await newUser()
+  const { body: { board } } = await owner.post('/api/boards', { title: 'B' }).expect(201)
+
+  const first = (await owner.post(`/api/boards/${board.id}/invitations`, { email: invited.email }).expect(201)).body.invitation
+  await invited.post(`/api/invitations/${first.id}/decline`).expect(204)
+  errorCode(await invited.post(`/api/invitations/${first.id}/accept`), 404, 'INVITATION_NOT_FOUND')
+
+  const second = (await owner.post(`/api/boards/${board.id}/invitations`, { email: invited.email }).expect(201)).body.invitation
+  await owner.delete(`/api/boards/${board.id}/invitations/${second.id}`).expect(204)
+  errorCode(await invited.post(`/api/invitations/${second.id}/accept`), 404, 'INVITATION_NOT_FOUND')
+})
+
+test('expired invitations cannot be accepted and do not block a new one', async () => {
+  const owner = await newUser()
+  const invited = await newUser()
+  const { body: { board } } = await owner.post('/api/boards', { title: 'B' }).expect(201)
+  const old = (await owner.post(`/api/boards/${board.id}/invitations`, { email: invited.email }).expect(201)).body.invitation
+  await database.boardInvitations.updateOne({ email: invited.email }, { $set: { expiresAt: new Date(Date.now() - 1000) } })
+
+  errorCode(await invited.post(`/api/invitations/${old.id}/accept`), 404, 'INVITATION_NOT_FOUND')
+  await owner.post(`/api/boards/${board.id}/invitations`, { email: invited.email }).expect(201)
+})
+
+test('a removed member loses access immediately', async () => {
+  const { owner, member, board } = await boardWithMember()
+  await owner.delete(`/api/boards/${board.id}/members/${member.user.id}`).expect(204)
+  errorCode(await member.get(`/api/boards/${board.id}`), 404, 'BOARD_NOT_FOUND')
+  assert.deepEqual((await member.get('/api/boards').expect(200)).body.boards, [])
+  errorCode(await owner.delete(`/api/boards/${board.id}/members/${member.user.id}`), 404, 'MEMBER_NOT_FOUND')
+})
+
+test('a member can leave, but cannot remove someone else', async () => {
+  const { owner, member, board } = await boardWithMember()
+  const third = await newUser()
+  const { body: { invitation } } = await owner.post(`/api/boards/${board.id}/invitations`, { email: third.email }).expect(201)
+  await third.post(`/api/invitations/${invitation.id}/accept`).expect(200)
+
+  errorCode(await member.delete(`/api/boards/${board.id}/members/${third.user.id}`), 403, 'OWNER_ONLY')
+  await member.delete(`/api/boards/${board.id}/members/${member.user.id}`).expect(204)
   errorCode(await member.get(`/api/boards/${board.id}`), 404, 'BOARD_NOT_FOUND')
 })
 
-test('deleting a board removes its memberships', async () => {
+test('deleting a board removes its members and invitations', async () => {
   const { owner, member, board } = await boardWithMember()
+  await owner.post(`/api/boards/${board.id}/invitations`, { email: 'later@example.test' }).expect(201)
   await owner.delete(`/api/boards/${board.id}`).expect(204)
+
   errorCode(await owner.get(`/api/boards/${board.id}`), 404, 'BOARD_NOT_FOUND')
   errorCode(await member.get(`/api/boards/${board.id}`), 404, 'BOARD_NOT_FOUND')
-  assert.equal(await database.boardMembers.countDocuments({ boardId: new ObjectId(board.id) }), 0)
+  const { ObjectId } = await import('mongodb')
+  const boardId = new ObjectId(board.id)
+  assert.equal(await database.boardMembers.countDocuments({ boardId }), 0)
+  assert.equal(await database.boardInvitations.countDocuments({ boardId }), 0)
 })
