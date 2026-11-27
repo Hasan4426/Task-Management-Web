@@ -1,4 +1,4 @@
-# Trello Clone
+# Task Management Web
 
 Team task management project for Web Development Fall 26.
 
