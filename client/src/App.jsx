@@ -3,24 +3,67 @@ import { useAuth } from './features/auth/AuthContext.jsx'
 import AuthForm from './features/auth/AuthForm.jsx'
 
 function Account() {
-  const { user, logout } = useAuth()
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState('')
+  const { user, logout, updateName } = useAuth()
+  const [draft, setDraft] = useState(null)
+  const [busy, setBusy] = useState('')
+  const [logoutError, setLogoutError] = useState('')
+  const [saveError, setSaveError] = useState(null)
+  const [saved, setSaved] = useState(false)
   const pending = useRef(false)
+
+  async function handleSave(event) {
+    event.preventDefault()
+    if (pending.current) return
+    pending.current = true
+    setBusy('save')
+    setSaveError(null)
+    setSaved(false)
+    try {
+      if (await updateName(draft ?? user.name)) {
+        setDraft(null)
+        setSaved(true)
+      }
+    } catch (error) {
+      setSaveError(error)
+    } finally {
+      pending.current = false
+      setBusy('')
+    }
+  }
+
   async function handleLogout() {
     if (pending.current) return
     pending.current = true
-    setBusy(true)
-    setError('')
-    try { await logout() } catch (failure) { setError(failure.message) }
-    finally { pending.current = false; setBusy(false) }
+    setBusy('logout')
+    setLogoutError('')
+    try { await logout() } catch (failure) { setLogoutError(failure.message) }
+    finally { pending.current = false; setBusy('') }
   }
+
+  const nameError = saveError?.fields?.name
   return <section aria-labelledby="account-heading">
     <h2 id="account-heading">Welcome, {user.name}</h2>
     <p>You are signed in.</p>
-    <dl><dt>Name</dt><dd>{user.name}</dd><dt>Email</dt><dd>{user.email}</dd></dl>
-    {error && <p role="alert">Logout was not confirmed. {error}</p>}
-    <button disabled={busy} onClick={handleLogout}>{busy ? 'Logging out…' : error ? 'Retry logout' : 'Log out'}</button>
+    <form onSubmit={handleSave} aria-busy={busy === 'save'}>
+      <p>
+        <label htmlFor="display-name">Display name</label>{' '}
+        <input id="display-name" name="name" type="text" autoComplete="name" required
+          value={draft ?? user.name} readOnly={Boolean(busy)}
+          aria-invalid={Boolean(nameError)} aria-describedby={nameError ? 'display-name-error' : undefined}
+          onChange={event => {
+            setDraft(event.target.value)
+            setSaveError(null)
+            setSaved(false)
+          }} />
+      </p>
+      {nameError && <p id="display-name-error" role="alert">{nameError}</p>}
+      {saveError && !nameError && <p role="alert">Could not save your display name. {saveError.message}</p>}
+      <button type="submit" disabled={Boolean(busy)}>{busy === 'save' ? 'Saving…' : 'Save name'}</button>
+    </form>
+    {saved && <p role="status">Display name saved.</p>}
+    <dl><dt>Email</dt><dd>{user.email}</dd></dl>
+    {logoutError && <p role="alert">Logout was not confirmed. {logoutError}</p>}
+    <button type="button" disabled={Boolean(busy)} onClick={handleLogout}>{busy === 'logout' ? 'Logging out…' : logoutError ? 'Retry logout' : 'Log out'}</button>
   </section>
 }
 

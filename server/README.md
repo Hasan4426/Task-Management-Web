@@ -1,6 +1,6 @@
 # Authentication backend
 
-Node.js 26 LTS + Express + MongoDB. Implements registration, login, logout and session restoration. The frontend is a separate task for Hasan.
+Node.js 26 LTS + Express + MongoDB. Implements registration, login, logout, session restoration and display-name updates. The frontend is a separate task for Hasan.
 
 ## Source layout
 
@@ -60,16 +60,19 @@ The server listens at `http://127.0.0.1:3000`. A frontend at `http://localhost:5
 | POST | `/api/auth/register` | JSON: `name`, `email`, `password` | 201 `{user}` and session cookie |
 | POST | `/api/auth/login` | JSON: `email`, `password` | 200 `{user}` and session cookie |
 | GET | `/api/auth/me` | None | 200 `{user}` or 401 when signed out |
+| PATCH | `/api/auth/me` | JSON object with `name` only | 200 `{user}` with the saved name or 401 when signed out |
 | POST | `/api/auth/logout` | None | 204, invalidates current session |
 | GET | `/api/health` | None | 200 `{"status":"ok"}` or 503 |
 
 Public users contain `id`, `name`, `email` and ISO `createdAt`. Errors use
 `{error:{code,message,fields?}}`, where optional `fields` maps field names to error strings.
-Names are trimmed, 1–80 Unicode code points; emails are trimmed, lowercased and unique.
+Names are trimmed and must contain 1–80 well-formed Unicode code points. Registration trims and lowercases email addresses and requires them to be unique.
 Passwords must contain 15–128 Unicode code points and are never trimmed. Unexpected fields are rejected.
 
+`PATCH /api/auth/me` updates the display name for the account identified by the session. Email is read-only. Subsequent `GET /api/auth/me` requests return the saved name. An invalid name returns 400 `VALIDATION_ERROR` with a `fields.name` message.
+
 Browser requests must use `credentials: 'include'`; mutations must include
-`X-Requested-With: XMLHttpRequest`. Registration/login also require `Content-Type: application/json`,
+`X-Requested-With: XMLHttpRequest`. Registration, login and display-name updates also require `Content-Type: application/json`,
 with an 8 KiB body limit. Session cookies are HttpOnly; do not store tokens in browser storage.
 Sessions last up to seven days from authentication, and logout affects only the current session.
 

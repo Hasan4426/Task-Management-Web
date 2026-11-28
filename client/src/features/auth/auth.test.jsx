@@ -33,6 +33,79 @@ describe('authentication UI and API contract', () => {
     expect(fetch.mock.calls[0][1].credentials).toBe('include')
   })
 
+  it('saves only the display name, using the returned profile to update the account', async () => {
+    const { fetch, browser } = setup(response(200, { user }))
+    const name = await screen.findByRole('textbox', { name: 'Display name' })
+    expect(name).toHaveValue(user.name)
+    expect(screen.getByText(user.email)).toBeVisible()
+    expect(screen.queryByLabelText('Email')).not.toBeInTheDocument()
+    await browser.clear(name)
+    await browser.type(name, '  Updated User  ')
+
+    let finish
+    fetch.mockImplementationOnce(() => new Promise(resolve => { finish = resolve }))
+    await browser.dblClick(screen.getByRole('button', { name: 'Save name' }))
+    expect(fetch).toHaveBeenCalledTimes(2)
+    expect(screen.getByRole('button', { name: 'Saving…' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Log out' })).toBeDisabled()
+    const [url, options] = fetch.mock.calls[1]
+    expect(url).toMatch(/\/api\/auth\/me$/)
+    expect(options.method).toBe('PATCH')
+    expect(options.credentials).toBe('include')
+    expect(options.headers).toEqual({ 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' })
+    expect(JSON.parse(options.body)).toEqual({ name: '  Updated User  ' })
+
+    await act(async () => finish(response(200, { user: { ...user, name: 'Updated User' } })))
+    expect(await screen.findByRole('heading', { name: 'Welcome, Updated User' })).toBeVisible()
+    expect(name).toHaveValue('Updated User')
+    expect(screen.getByRole('status')).toHaveTextContent('Display name saved.')
+  })
+
+  it('preserves the draft and associates a server validation error with the display-name field', async () => {
+    const { fetch, browser } = setup(response(200, { user }))
+    const name = await screen.findByRole('textbox', { name: 'Display name' })
+    await browser.clear(name)
+    await browser.type(name, '   ')
+    const message = 'Enter a name of 1 to 80 characters.'
+    fetch.mockResolvedValueOnce(failure(400, 'VALIDATION_ERROR', 'Check the submitted fields.', { name: message }))
+    await browser.keyboard('{Enter}')
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(message)
+    expect(name).toHaveAccessibleDescription(message)
+    expect(name).toHaveValue('   ')
+    expect(screen.getByRole('heading', { name: 'Welcome, Test User' })).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Save name' })).toBeEnabled()
+  })
+
+  it('returns to login when a profile save finds an expired session', async () => {
+    const { fetch, browser } = setup(response(200, { user }))
+    fetch.mockResolvedValueOnce(failure(401, 'UNAUTHENTICATED', 'Sign in to continue.'))
+    await browser.click(await screen.findByRole('button', { name: 'Save name' }))
+    expect(await screen.findByRole('heading', { name: 'Log in' })).toBeVisible()
+    expect(screen.queryByRole('textbox', { name: 'Display name' })).not.toBeInTheDocument()
+  })
+
+  it('waits for a pending name save before restoring a page session', async () => {
+    const { fetch, browser } = setup(response(200, { user }))
+    const name = await screen.findByRole('textbox', { name: 'Display name' })
+    const updated = { ...user, name: 'Restored User' }
+    await browser.clear(name)
+    await browser.type(name, updated.name)
+
+    let finish
+    fetch.mockImplementationOnce(() => new Promise(resolve => { finish = resolve }))
+    await browser.click(screen.getByRole('button', { name: 'Save name' }))
+    await act(async () => { window.dispatchEvent(new Event('pageshow')) })
+    expect(screen.getByRole('status')).toHaveTextContent('Checking your session')
+    expect(fetch).toHaveBeenCalledTimes(2)
+
+    fetch.mockResolvedValueOnce(response(200, { user: updated }))
+    await act(async () => finish(response(200, { user: updated })))
+    expect(await screen.findByRole('heading', { name: 'Welcome, Restored User' })).toBeVisible()
+    expect(fetch).toHaveBeenCalledTimes(3)
+    expect(fetch.mock.calls[2][1].method).toBe('GET')
+  })
+
   it('shows retry on unavailable restoration instead of claiming the user is signed out', async () => {
     const { fetch, browser } = setup(failure(500, 'INTERNAL_ERROR', 'Temporarily unavailable.'))
     expect(await screen.findByRole('alert')).toHaveTextContent('Temporarily unavailable')
