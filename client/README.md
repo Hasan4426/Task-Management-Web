@@ -38,6 +38,8 @@ the backend's real MongoDB integration tests or browser integration checks.
   the session; connection/server failures do not claim the user logged out.
 - Successful authentication displays a protected account screen with name and email.
   Replace that landing screen with the board dashboard when it exists.
+- The account screen saves display-name changes through `PATCH /api/auth/me`.
+  Email is read-only. Refreshing the page restores the saved name through `GET /api/auth/me`.
 - Logout handles the empty 204 response. Failed logout preserves the account and offers
   retry. Success unmounts the private screen and clears user state.
 - Forms prevent concurrent submissions and honor `Retry-After`, separately for login
@@ -57,14 +59,15 @@ inside the authenticated subtree, or clear future external caches on sign-out.
 The app rechecks the session on browser page restoration. Login and registration
 requests are never automatically retried.
 
-Profile editing, password recovery, social login, boards and other features are not
+Password recovery, social login, boards and other features are not
 implemented by this API and are not presented as working UI flows.
 
 ## Manual integration checks
 
-With the real backend running, register and log out; log in again; refresh to restore
-the session; try a duplicate email and incorrect password; exhaust the login limit;
-stop the backend to check retry behavior; verify logout followed by Back/refresh
+With the real backend running, register and log out, then log in again. Save a new
+display name and refresh to confirm that the session restores with the saved name.
+Try a duplicate email and incorrect password, then exhaust the login limit.
+Stop the backend to check retry behavior. Verify logout followed by Back/refresh
 does not reveal the account. Confirm browser storage contains no passwords or tokens.
 
 ## Implementation verification

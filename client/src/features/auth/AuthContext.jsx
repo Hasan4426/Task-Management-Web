@@ -6,6 +6,7 @@ const AuthContext = createContext(null)
 export function AuthProvider({ children }) {
   const [session, setSession] = useState({ status: 'loading', user: null, error: '' })
   const generation = useRef(0)
+  const profileSave = useRef(null)
   const signOut = useCallback(() => {
     generation.current += 1
     setSession({ status: 'anonymous', user: null, error: '' })
@@ -15,6 +16,9 @@ export function AuthProvider({ children }) {
     const current = ++generation.current
     setSession(previous => ({ ...previous, status: 'loading', error: '' }))
     try {
+      // Read the profile after any in-flight save has finished.
+      if (profileSave.current) await profileSave.current.catch(() => {})
+      if (signal?.aborted || current !== generation.current) return
       const { user } = await authRequest('me', { signal })
       if (current === generation.current) setSession({ status: 'authenticated', user, error: '' })
     } catch (error) {
@@ -49,7 +53,28 @@ export function AuthProvider({ children }) {
     signOut()
   }
 
-  return <AuthContext.Provider value={{ ...session, restore, authenticate, logout }}>{children}</AuthContext.Provider>
+  async function updateName(name) {
+    const current = generation.current
+    const request = authRequest('me', { method: 'PATCH', body: { name } })
+    profileSave.current = request
+    try {
+      const { user } = await request
+      if (current !== generation.current) return false
+      setSession({ status: 'authenticated', user, error: '' })
+      return true
+    } catch (error) {
+      if (current !== generation.current) return false
+      if (error.status === 401) {
+        signOut()
+        return false
+      }
+      throw error
+    } finally {
+      if (profileSave.current === request) profileSave.current = null
+    }
+  }
+
+  return <AuthContext.Provider value={{ ...session, restore, authenticate, logout, updateName }}>{children}</AuthContext.Provider>
 }
 
 export function useAuth() {
